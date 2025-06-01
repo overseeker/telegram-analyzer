@@ -1,6 +1,6 @@
-// src/main.rs
 use clap::{Parser, Subcommand};
 use std::error::Error;
+use behaviors::count_urls::OutputFormat;
 
 mod behavior;
 use behavior::{Behavior, BehaviorType};
@@ -29,9 +29,17 @@ enum Commands {
 
     /// Extract all URLs and print each URL with the number of times it appeared
     CountUrls {
-        /// Path to input JSON
+        /// Path to the file to scan for URLs.
         #[arg(short, long)]
-        json: String,
+        input: String,
+
+        /// (Optional) Where to save the URL,count pairs. If omitted, prints to stdout.
+        #[arg(short, long)]
+        output: Option<String>,
+
+        /// (Optional) Output format: “plain” (default) or “csv” (quoted URL,count).
+        #[arg(short, long, value_enum)]
+        format: Option<OutputFormat>,
     },
 
     /// From JSON, count how many events occurred in each 30-minute slot (e.g. 13:30–14:00)
@@ -142,8 +150,13 @@ fn main() -> Result<(), Box<dyn Error>> {
             let b = ExtractUrls::new(json);
             b.run()?;
         }
-        Commands::CountUrls { json } => {
-            let b = CountUrls::new(json);
+        Commands::CountUrls {
+            input,
+            output,
+            format,
+        } => {
+            println!("→ Running CountUrls on file: {}", input);
+            let b = CountUrls::new(input, output, format);
             b.run()?;
         }
         Commands::CountTimeSlots { json } => {
@@ -187,7 +200,7 @@ fn main() -> Result<(), Box<dyn Error>> {
             // Build *every* behavior, passing along the same paths
             let behaviors: Vec<Box<dyn Behavior>> = vec![
                 Box::new(ExtractUrls::new(json.clone())),
-                Box::new(CountUrls::new(json.clone())),
+                Box::new(CountUrls::new(json.clone(), None, None)),
                 Box::new(CountTimeSlots::new(json.clone())),
                 Box::new(CountDaily::new(json.clone())),
                 Box::new(ListExtensions::new(folder.clone())),
@@ -212,7 +225,7 @@ fn main() -> Result<(), Box<dyn Error>> {
             // Construct *all* behaviors, but only run those where behavior_type() matches the chosen one.
             let mut behaviors: Vec<Box<dyn Behavior>> = Vec::new();
             behaviors.push(Box::new(ExtractUrls::new(json.clone().unwrap_or_default())));
-            behaviors.push(Box::new(CountUrls::new(json.clone().unwrap_or_default())));
+            behaviors.push(Box::new(CountUrls::new(json.clone().unwrap_or_default(), None, None)));
             behaviors.push(Box::new(CountTimeSlots::new(json.clone().unwrap_or_default())));
             behaviors.push(Box::new(CountDaily::new(json.clone().unwrap_or_default())));
             behaviors.push(Box::new(ListExtensions::new(folder.clone().unwrap_or_default())));

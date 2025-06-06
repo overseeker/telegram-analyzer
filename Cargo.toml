@@ -7,7 +7,8 @@ description = "A CLI tool to analyze Telegram JSON data, file metadata, etc."
 license = "MIT"
 
 [dependencies]
+regex = "1.7"
 clap = { version = "4.2", features = ["derive"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
-regex = "1.7"
+chrono = { version = "0.4", features = ["serde"] }

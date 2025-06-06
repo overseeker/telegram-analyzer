@@ -1,6 +1,8 @@
 use clap::{Parser, Subcommand};
 use std::error::Error;
-use behaviors::count_urls::OutputFormat;
+
+mod common;
+use common::OutputFormat;
 
 mod behavior;
 use behavior::{Behavior, BehaviorType};
@@ -37,16 +39,24 @@ enum Commands {
         #[arg(short, long)]
         output: Option<String>,
 
-        /// (Optional) Output format: “plain” (default) or “csv” (quoted URL,count).
+        /// (Optional) Output format: “stdout” (default), “txt”, or “csv”.
         #[arg(short, long, value_enum)]
         format: Option<OutputFormat>,
     },
 
     /// From JSON, count how many events occurred in each 30-minute slot (e.g. 13:30–14:00)
     CountTimeSlots {
-        /// Path to input JSON
+        /// Path to the file to scan for URLs.
         #[arg(short, long)]
-        json: String,
+        input: String,
+
+        /// (Optional) Where to save the slot,count pairs. If omitted, prints to stdout.
+        #[arg(short, long)]
+        output: Option<String>,
+
+        /// (Optional) Output format: “stdout” (default), “txt”, or “csv”.
+        #[arg(short, long, value_enum)]
+        format: Option<OutputFormat>,
     },
 
     /// From JSON, count how many events occurred each day
@@ -150,58 +160,76 @@ fn main() -> Result<(), Box<dyn Error>> {
             let b = ExtractUrls::new(json);
             b.run()?;
         }
-        Commands::CountUrls {
-            input,
-            output,
-            format,
-        } => {
+
+        Commands::CountUrls { input, output, format } => {
+            let fmt = format.unwrap_or(OutputFormat::Stdout);
+            // If user requested Txt or Csv, output folder must be provided
+            if (fmt != OutputFormat::Stdout) && output.is_none() {
+                return Err("Error: --format not ‘stdout’ requires --output <folder>".into());
+            }
             println!("→ Running CountUrls on file: {}", input);
-            let b = CountUrls::new(input, output, format);
+            let b = CountUrls::new(input, output, Some(fmt));
             b.run()?;
         }
-        Commands::CountTimeSlots { json } => {
-            let b = CountTimeSlots::new(json);
+
+        Commands::CountTimeSlots { input, output, format } => {
+            let fmt = format.unwrap_or(OutputFormat::Stdout);
+            // If user requested Txt or Csv, output folder must be provided
+            if (fmt != OutputFormat::Stdout) && output.is_none() {
+                return Err("Error: --format not ‘stdout’ requires --output <folder>".into());
+            }
+            println!("→ Running CountTimeSlots on JSON: {}", input);
+            let b = CountTimeSlots::new(input, output, Some(fmt));
             b.run()?;
         }
+
         Commands::CountDaily { json } => {
             let b = CountDaily::new(json);
             b.run()?;
         }
+
         Commands::ListExtensions { folder } => {
             let b = ListExtensions::new(folder);
             b.run()?;
         }
+
         Commands::FileMetadata { file } => {
             let b = FileMetadata::new(file);
             b.run()?;
         }
+
         Commands::UserInteractions { json } => {
             let b = UserInteractions::new(json);
             b.run()?;
         }
+
         Commands::MessageStats { json } => {
             let b = MessageStats::new(json);
             b.run()?;
         }
+
         Commands::Diffusion { json } => {
             let b = Diffusion::new(json);
             b.run()?;
         }
+
         Commands::Shares { json } => {
             let b = Shares::new(json);
             b.run()?;
         }
+
         Commands::TextStats { json } => {
             let b = TextStats::new(json);
             b.run()?;
         }
 
         Commands::All { json, folder, file } => {
-            // Build *every* behavior, passing along the same paths
+            // “All” implicitly uses stdout for CountUrls/CountTimeSlots,
+            // or their default behavior if output not needed.
             let behaviors: Vec<Box<dyn Behavior>> = vec![
                 Box::new(ExtractUrls::new(json.clone())),
-                Box::new(CountUrls::new(json.clone(), None, None)),
-                Box::new(CountTimeSlots::new(json.clone())),
+                Box::new(CountUrls::new(json.clone(), None, Some(OutputFormat::Stdout))),
+                Box::new(CountTimeSlots::new(json.clone(), None, Some(OutputFormat::Stdout))),
                 Box::new(CountDaily::new(json.clone())),
                 Box::new(ListExtensions::new(folder.clone())),
                 Box::new(FileMetadata::new(file.clone())),
@@ -222,11 +250,20 @@ fn main() -> Result<(), Box<dyn Error>> {
             folder,
             file,
         } => {
-            // Construct *all* behaviors, but only run those where behavior_type() matches the chosen one.
+            // Build all behaviors, but only run those matching behavior_type.
+            // For CountUrls/CountTimeSlots in Group, default to stdout.
             let mut behaviors: Vec<Box<dyn Behavior>> = Vec::new();
             behaviors.push(Box::new(ExtractUrls::new(json.clone().unwrap_or_default())));
-            behaviors.push(Box::new(CountUrls::new(json.clone().unwrap_or_default(), None, None)));
-            behaviors.push(Box::new(CountTimeSlots::new(json.clone().unwrap_or_default())));
+            behaviors.push(Box::new(CountUrls::new(
+                json.clone().unwrap_or_default(),
+                None,
+                Some(OutputFormat::Stdout),
+            )));
+            behaviors.push(Box::new(CountTimeSlots::new(
+                json.clone().unwrap_or_default(),
+                None,
+                Some(OutputFormat::Stdout),
+            )));
             behaviors.push(Box::new(CountDaily::new(json.clone().unwrap_or_default())));
             behaviors.push(Box::new(ListExtensions::new(folder.clone().unwrap_or_default())));
             behaviors.push(Box::new(FileMetadata::new(file.clone().unwrap_or_default())));
